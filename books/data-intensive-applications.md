@@ -27,7 +27,7 @@ Systems that anticipate faults and can cope with them are called _fault-tolerant
 
 You should generally **prefer tolerating faults over preventing faults**.
 
-* **Hardware faults**. Until recently redundancy of hardware components was sufficient for most applications. As data volumes increase, more applications use a larger number of machines, proportionally increasing the rate of hardware faults. **There is a move towards systems that tolerate the loss of entire machines**. A system that tolerates machine failure can be patched one node at a time, without downtime of the entire system (_rolling upgrade_).
+* **Hardware faults**. Until recently, redundancy of hardware components was sufficient for most applications. As data volumes increase, more applications use a larger number of machines, proportionally increasing the rate of hardware faults. **There is a move towards systems that tolerate the loss of entire machines**. A system that tolerates machine failure can be patched one node at a time, without downtime of the entire system (_rolling upgrade_).
 * **Software errors**. It is unlikely that a large number of hardware components will fail at the same time. Software errors are a systematic error within the system, they tend to cause many more system failures than uncorrelated hardware faults.
 * **Human errors**. Humans are known to be unreliable. Configuration errors by operators are a leading cause of outages. You can make systems more reliable:
     - Minimising the opportunities for error, peg: with admin interfaces that make easy to do the "right thing" and discourage the "wrong thing".
@@ -159,11 +159,11 @@ _Not Only SQL_ has a few driving forces:
 * Specialised query optimisations
 * Desire for a more dynamic and expressive data model
 
-**With a SQL model, if data is stored in a relational tables, an awkward translation layer is translated, this is called _impedance mismatch_.**
+**With a SQL model, if data is stored in a relational tables, an awkward translation can happen between application code (objects, models) and database rows and column, this is called _impedance mismatch_. **
 
 JSON model reduces the impedance mismatch and the lack of schema is often cited as an advantage.
 
-JSON representation has better _locality_ than the multi-table SQL schema. All the relevant information is in one place, and one query is sufficient.
+JSON representation has better **_locality_** than the multi-table SQL schema. All the relevant information is in one place, and one query is sufficient.
 
 In relational databases, it's normal to refer to rows in other tables by ID, because joins are easy. In document databases, joins are not needed for one-to-many tree structures, and support for joins is often weak.
 
@@ -244,17 +244,17 @@ Mongo offers a MapReduce solution.
 
 ```js
 db.observations.mapReduce(
-    function map() { 2
+    function map() { 
         var year  = this.observationTimestamp.getFullYear();
         var month = this.observationTimestamp.getMonth() + 1;
-        emit(year + "-" + month, this.numAnimals); 3
+        emit(year + "-" + month, this.numAnimals); 
     },
-    function reduce(key, values) { 4
-        return Array.sum(values); 5
+    function reduce(key, values) { 
+        return Array.sum(values); 
     },
     {
         query: { family: "Sharks" }, 1
-        out: "monthlySharkReport" 6
+        out: "monthlySharkReport" 
     }
 );
 ```
@@ -352,7 +352,7 @@ A storage engine like Bitcask is well suited to situations where the value for e
 
 As we only ever append to a file, so how do we avoid eventually running out of disk space? **A good solution is to break the log into segments of certain size by closing the segment file when it reaches a certain size, and making subsequent writes to a new segment file. We can then perform _compaction_ on these segments.** Compaction means throwing away duplicate keys in the log, and keeping only the most recent update for each key.
 
-We can also merge several segments together at the sae time as performing the compaction. Segments are never modified after they have been written, so the merged segment is written to a new file. Merging and compaction of frozen segments can be done in a background thread. After the merging process is complete, we switch read requests to use the new merged segment instead of the old segments, and the old segment files can simply be deleted.
+We can also merge several segments together at the same time as performing the compaction. Segments are never modified after they have been written, so the merged segment is written to a new file. Merging and compaction of frozen segments can be done in a background thread. After the merging process is complete, we switch read requests to use the new merged segment instead of the old segments, and the old segment files can simply be deleted.
 
 Each segment now has its own in-memory hash table, mapping keys to file offsets. In order to find a value for a key, we first check the most recent segment hash map; if the key is not present we check the second-most recent segment and so on. The merging process keeps the number of segments small, so lookups don't need to check many hash maps.
 
@@ -569,7 +569,7 @@ What about changing the data type of a field? There is a risk that values will l
 
 Apache Avro is another binary format that has two schema languages, one intended for human editing (Avro IDL), and one (based on JSON) that is more easily machine-readable.
 
-You go go through the fields in the order they appear in the schema and use the schema to tell you the datatype of each field. Any mismatch in the schema between the reader and the writer would mean incorrectly decoded data.
+You go through the fields in the order they appear in the schema and use the schema to tell you the datatype of each field. Any mismatch in the schema between the reader and the writer would mean incorrectly decoded data.
 
 What about schema evolution? When an application wants to encode some data, it encodes the data using whatever version of the schema it knows (_writer's schema_).
 
@@ -583,7 +583,7 @@ To maintain compatibility, you may only add or remove a field that has a default
 
 If you were to add a field that has no default value, new readers wouldn't be able to read data written by old writers.
 
-Changing the datatype of a field is possible, provided that Avro can convert the type. Changing the name of a filed is tricky (backward compatible but not forward compatible).
+Changing the datatype of a field is possible, provided that Avro can convert the type. Changing the name of a field is tricky (backward compatible but not forward compatible).
 
 The schema is identified encoded in the data. In a large file with lots of records, the writer of the file can just include the schema at the beginning of the file. On a database with individually written records, you cannot assume all the records will have the same schema, so you have to include a version number at the beginning of every encoded record. While sending records over the network, you can negotiate the schema version on connection setup.
 
@@ -670,3 +670,125 @@ Reasons for distribute a database across multiple machines:
 * Scalability
 * Fault tolerance/high availability
 * Latency, having servers at various locations worldwide
+
+
+# PART II : Distributed Data
+
+* Vertical scaling approach can have some problems : 
+	* Not easily scalable (bottlenecks between components can occurs)
+	* Geographicaly limited
+
+---
+### Replication versus partitioning
+* **Replication** is keeping a copy of the data on different nodes, provides redundancy.
+* **Partitioning** is splitting the database into smaller subset called partitions (also called **shards**)
+
+---
+## Chapitre 5 : Réplication
+
+Plusieurs cas d'utilisation de la réplication :
+
+- Garder les données géographiquement proches des utilisateurs.
+- Permettre au système de continuer à fonctionner en cas de défaillance d'un nœud.
+- Améliorer l'évolutivité des opérations de lecture.
+
+### Leaders et Followers
+
+Chaque nœud qui stocke une copie des données de la base de données est appelé une **réplica**. Pour que la réplication fonctionne correctement, chaque écriture doit être traitée. La solution la plus courante est la **réplication basée sur un leader**.
+
+1. Le leader prend la responsabilité de gérer les écritures sur la base de données.
+2. Les followers reçoivent le journal de réplication du leader et mettent à jour leur base de données.
+3. Les followers ou le leader peuvent être interrogés pour lire les données.
+![[Pasted image 20240917134959.png]]
+
+### Synchronous versus asynchronous replication
+![[Pasted image 20240918131157.png]]
+
+- Leader avec un follower synchrone et un follower asynchrone : **semi-synchronous replication**.
+    - L'avantage d'une réplication entièrement synchrone est que si le leader échoue, un follower peut rapidement être élu leader tout en ayant toutes les données dans un état cohérent. L'inconvénient est que si un follower échoue, l'écriture ne peut pas être traitée.
+    - Une réplication entièrement asynchrone peut continuer à traiter les écritures même si le leader échoue, mais l'inconvénient est que la base de données peut se retrouver dans un état incohérent dans ce cas.
+
+### Setting up new followers
+
+- Dans la plupart des bases de données, la procédure consiste à :
+    - Prendre un snapshot du leader à un moment donné.
+    - Le copier sur le nœud follower.
+    - Le follower se connecte au leader et demande toutes les modifications de données à partir de la position dans le journal de réplication du leader et du snapshot.
+
+### Handling Node Outages
+
+Il existe différentes techniques pour récupérer un nœud après une panne :
+
+- **Follower failure - Catch-up recovery** : Processus expliqué dans la section "Setting up new followers".
+
+- **Leader failure - Failover** :
+    - Premièrement, il faut détecter que le leader a échoué (par exemple via un healthcheck entre les nœuds).
+    - Ensuite, il faut choisir un nouveau leader (généralement le nœud le plus à jour).
+    - Enfin, reconfigurer le système pour utiliser le nouveau leader.
+
+### Implementation of replication logs
+
+- **Statement based replication** : Chaque instruction modifiant les données (SELECT, UPDATE...) est envoyée au follower.
+	- Peut poser des problèmes complexes pouvant casser la réplication : utilisation de méthodes non déterministes telles que RAND() ou NOW(), exécution des instructions dans un ordre différent, effets secondaires des triggers, etc.
+- **Write-ahead-log shipping** : Mécanisme de (log) en append-only contenant toutes les opérations d'écriture sous forme d'octets (utilisé par **Postgres** et **Oracle**).
+    - Niveau d'intrication bas : un WAL décrit quels octets ont été modifiés dans quels blocs de disque. Si le format de stockage change, il sera impossible d'utiliser la version précédente du WAL.
+- **Logical (row-based) log replication** : Consiste à découpler le format du journal des mécanismes internes du moteur de stockage. On l'appelle ça **un logical log**, il contient une séquence d'enregistrements décrivant les écritures dans la base de données. Il offre une meilleure compatibilité en arrière grâce à ce découplage en termes de format.
+
+### Problems with replication lags
+
+La réplication basée sur un leader est un modèle courant pour les applications web : il y a généralement beaucoup plus de lectures que d'écritures, donc pour améliorer les performances de lecture, il suffit d'ajouter plus de followers. Des problèmes peuvent survenir lorsque les followers prennent du retard par rapport au leader en termes de données répliquées, ce qui est généralement dû à un **replication lag** : cela symbolise le délai de réplication entre les nœuds.
+
+#### Reading your own writes
+![[Pasted image 20240920113230.png]]
+
+Il peut arriver qu'un utilisateur de l'application mette à jour ses données et voie des informations non à jour s'il fait une demande peu de temps après avoir soumis une modification : il peut lire des données incohérentes d'un follower si celui-ci est en retard par rapport au leader en termes de réplication. Quelques astuces peuvent prévenir ce problème :
+
+- Lorsqu'on lit une donnée que l'utilisateur pourrait avoir modifiée, il faut la lire directement depuis le leader.
+- On pourrait suivre l'heure de la dernière mise à jour. Si elle dépasse une minute, on peut lire depuis le follower, sinon, depuis le leader.
+- On peut se souvenir du timestamp envoyé par le client pour comparer avec le timestamp de la dernière mise à jour enregistrée dans la réplica.
+
+#### Monotonic Reads
+![[Pasted image 20240920114512.png]]
+Si un utilisateur requête plusieurs fois la même data, mais qu'il la requête depuis différents replicas, il peut avoir l'impression de "remonter le temps" dans le sens où si un replica possède un plus gros lag qu'un autre, l'opération de read peut être inconsistante.
+
+C'est en cela qu'on a besoin de **monotonic read** : c'est le fait qu'un user fasse ses opérations de lecture à chaque fois sur le même replica. 
+
+#### Consistent Prefix Reads
+![[Pasted image 20240920115053.png]]
+Le problème énoncé dans le schéma est le suivant : si une partition est répliquée plus lentement qu'une autre, une utilisateur pourrait avoir la réponse à la question avant la question en elle même.
+
+On peut ici utiliser le mécanisme de **consistent prefix reads** qui garanti que si une séquences d'écritures en base de données se passent dans un certain ordre alors la lecture devra se faire dans le même ordre.
+
+## Multi-Leader Replication
+Une réplication multi-leader représente une complexité supplémentaire, mais peut être utile dans certains usecases : 
+
+### Multi-datacenter operation
+Dans une configuration multi-datacenter, on peut avoir un leader pour chaque datacenter, comme le présente ce schéma : 
+![[Pasted image 20240921101258.png]]
+Plusieurs avantages sont présents dans cette configuration :
+* **Performance** : La possibilité d'avoir un leader par data-center permet d'éviter la latence au cas où le data-center est éloigné de l'utilisateur.
+* **Tolerance à la panne** : Ici, si l'un des leaders échoue, les autres data-centers pourront continuer à encaisser la charge.
+* **Tolerance aux problèmes réseau**
+
+### Handling Write conflict
+![[Pasted image 20240921101926.png]]
+
+Un conflit d'écriture peut avoir lieu lorsque deux utilisateurs mettent à jour simultanément une même donnée dans le cadre d'une architecture multi leader.
+Dans ce cas, comment résoudre ce conflit ? 
+
+La stratégie la plus simple est de faire en sorte de les éviter, par exemple en routant spécifiquement certaines requêtes vers un leader designé.
+
+D'autres stratégies existent cependant :
+- Donner à chaque writes un ID. C'est l'ID le plus haut qui sera retenu.
+- Se baser le l'ID du replica, le plus haut ID est retenu.
+- Persister le conflit pour le résoudre plus tard.
+
+### Multi-Leader Replication Topologies
+![[Pasted image 20240921105230.png]]
+
+Il existe plusieurs types de topologies de réplication différentes, chacune avec des avantages et inconvénients, par exemple pour la all-to-all topology :
+![[Pasted image 20240921110302.png]]
+
+On constate ici un problème similaire à celui qu'on a pu observer lors du chapitre "Consistent Prefix Reads", la mise à jour dépend de l'insertion, donc on doit garder une logique d'ordre. 
+
+En bref : la réplication multi-leader en général, c'est pas terrible.
